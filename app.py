@@ -115,16 +115,22 @@ def login():
 
 
     cur = mysql.connection.cursor()
-    cur.execute("SELECT username, password, role_id FROM user WHERE username = %s AND password = %s", (username, password))
+    cur.execute("SELECT user_id ,username, password, role_id FROM user WHERE username = %s AND password = %s", (username, password))
     existing_user = cur.fetchone()
     cur.close()
+    print(existing_user)
 
     if existing_user:
         session["username"] = username
-        session["role_id"] = existing_user[2]
+        session["role_id"] = existing_user[3]
+        session["user_id"] = existing_user[0]
+        print(session.get('user_id'))
+
         response={
             "username":username, 
-            "role_id":existing_user[2]
+            "role_id":existing_user[3],
+            "user_id":existing_user[0]
+            
         }
         return response
     else: 
@@ -153,22 +159,20 @@ def logout():
 def index():
     return render_template('index.html')
 
-@app.route('/donor_form', methods=['POST'])
+@app.route('/donor_form/<user_id>', methods=['POST'])
 # @cross_origin()
-def donor_form():
-    # if not session.get("username"):
-    #     return jsonify({"message": "Unauthorized access"}), 401
+def donor_form(user_id):
+
 
     payload = request.json
     print (payload)
     units = int(payload.get('units'))
     disease = payload.get('disease')
     donated_date = payload.get('donated_date')
-    username = payload.get("username")
+    print("donor form",user_id)
 
     cur = mysql.connection.cursor()
-    cur.execute("SELECT user_id FROM user WHERE username = %s", [username])
-    user_id = cur.fetchone()[0]
+    
     cur.execute("INSERT INTO donation (user_id, units, disease, donated_date) VALUES (%s, %s, %s, %s)", (user_id, units, disease, donated_date))
     mysql.connection.commit()
     cur.close()
@@ -274,24 +278,26 @@ def reject_patient_request(request_id):
 
 @app.route('/delete/<donation_id>', methods=['POST'])
 def delete(donation_id):
-    if not session.get("username"):
-        return jsonify({"message": "Unauthorized access"}), 401
-    payload = request.json
+    # if not session.get("username"):
+    #     return jsonify({"message": "Unauthorized access"}), 401
     cur = mysql.connection.cursor()
     cur.execute("UPDATE donation SET status = 'rejected' WHERE donation_id = %s", [donation_id])
     mysql.connection.commit()
     cur.close()
+    response = {"message": "Request rejected"}
     
-    return jsonify({"message": "Request rejected"})
+    return jsonify(response)
 
-@app.route('/accept_donor/<donation_id>', methods=['POST'])
-def accept_donor(donation_id):
+@app.route('/update_donation_request/<donation_id>', methods=['PUT'])
+def update_donation_request(donation_id):
+    payload = request.json
+    status = payload.get('status')
     # Create a cursor to interact with the database
     cur = mysql.connection.cursor()
     
     try:
         # Update the donation status to 'Accepted'
-        cur.execute("UPDATE donation SET status = 'Accepted' WHERE donation_id = %s", [donation_id])
+        cur.execute("UPDATE donation SET status = %s WHERE donation_id = %s", (status, donation_id))
         
         # Fetch donor details
         cur.execute("""
@@ -310,9 +316,9 @@ def accept_donor(donation_id):
             cur.execute("UPDATE blood_stock SET units = units + %s WHERE bloodgroup = %s", (units, blood_group))
             mysql.connection.commit()
             
-            response = {"message": "Donation request accepted!"}
+            response = {"message": "Donation request updated!"}
         else:
-            response = {"message": "Donor not found or already accepted!"}
+            response = {"message": "doantion request not found!"}
     
     except Exception as e:
         mysql.connection.rollback()
@@ -412,27 +418,32 @@ def blood_stock_view():
 
 @app.route('/donor_history', methods=['GET'])
 def donor_history():
-    # if not session.get("username"):
-    #     return jsonify({"message": "Unauthorized access"}), 401
-    
-    cur = mysql.connection.cursor()
-    cur.execute("SELECT username, blood_group, units, disease, donated_date, status FROM user JOIN donation ON user.user_id = donation.user_id")
-    donor_history = cur.fetchall()
-    cur.close()
-    
-    # Convert the data to a list of dictionaries (JSON-friendly format)
-    donor_history_list = [{
-        'username': row[0],
-        'blood_group': row[1],
-        'units': row[2],
-        'disease': row[3],
-        'donated_date': row[4],
-        'status': row[5]
-    } for row in donor_history]
 
-    return jsonify({"donorhistory":donor_history_list})
+        cur = mysql.connection.cursor()
+        cur.execute("""
+            SELECT donation_id,blood_group, units, disease, donated_date, status 
+            FROM user 
+            JOIN donation ON user.user_id = donation.user_id
+            
+        """)
+        donor_history = cur.fetchall()
+        cur.close()
 
+        # Check if no donor history is found for the user
+        if not donor_history:
+            return jsonify({"message": "No donation history found for this user"}), 404
+        
+        # Convert the data to a list of dictionaries (JSON-friendly format)
+        donor_history_list = [{
+            'donation_id':row[0],
+            'blood_group': row[1],
+            'units': row[2],
+            'disease': row[3],
+            'donated_date': row[4],
+            'status': row[5]
+        } for row in donor_history]
 
+        return jsonify({"donorhistory": donor_history_list})
 
 
 @app.route('/patient_history', methods=['GET'])
@@ -441,7 +452,7 @@ def patient_history():
     #     return jsonify({"message": "Unauthorized access"}), 401
     
     cur = mysql.connection.cursor()
-    cur.execute("SELECT username, blood_group, units, reason, requested_date, status FROM user JOIN patient_request ON user.user_id = patient_request.user_id")
+    cur.execute("SELECT username, blood_group, units, reason, requested_date, status,request_id FROM user JOIN patient_request ON user.user_id = patient_request.user_id")
     patient_history = cur.fetchall()
     cur.close()
 
@@ -452,7 +463,8 @@ def patient_history():
         'units': row[2],
         'reason': row[3],
         'requested_date': row[4],
-        'status': row[5]
+        'status': row[5],
+        'request_id':row[6]
     } for row in patient_history]
 
     return jsonify({"patienthistory":patient_history_list})
@@ -460,14 +472,10 @@ def patient_history():
 
 
 
-@app.route('/view_donations', methods=['GET'])
-def view_donations():
-    
+@app.route('/view_donations/<user_id>', methods=['GET'])
+def view_donations(user_id):
     cur = mysql.connection.cursor()
-    username = "jay"
-    cur.execute("SELECT user_id FROM user WHERE username = %s", [username])
-    user_id = cur.fetchone()[0]  # Retrieve the actual user_id value
-    cur.execute("SELECT units, disease, donated_date, status FROM donation WHERE user_id = %s", [user_id])
+    cur.execute("SELECT units, disease, donated_date, status,user_id FROM donation WHERE user_id = %s", [user_id])
     view_donations = cur.fetchall()
     cur.close()
     
@@ -476,7 +484,8 @@ def view_donations():
         'units': row[0],
         'disease': row[1],
         'donated_date': row[2],
-        'status': row[3]
+        'status': row[3],
+        'user_id':row[4]
     } for row in view_donations]
 
     return jsonify({'donations': donations_list})
@@ -500,13 +509,10 @@ def test_api3():
         }
     return data
 
-@app.route('/view_requests/<username>', methods=['GET'])
-def view_requests(username):
+@app.route('/view_requests/<user_id>', methods=['GET'])
+def view_requests(user_id):
     cur = mysql.connection.cursor()
-    #username = session.get("username")
-    cur.execute("SELECT user_id FROM user WHERE username = %s", [username])
-    user_id = cur.fetchone()[0]  # Retrieve the actual user_id value
-    cur.execute("SELECT units,reason,requested_date,status from patient_request where user_id = %s",[user_id])
+    cur.execute("SELECT units,reason,requested_date,status,user_id from patient_request where user_id = %s",[user_id])
     view_requests=cur.fetchall()
     mysql.connection.commit()
     cur.close()
@@ -514,7 +520,8 @@ def view_requests(username):
         'units': row[0],
         'reason': row[1],
         'requested_date': row[2],
-        'status': row[3]
+        'status': row[3],
+        'user_id':row[4]
     } for row in view_requests]
 
     return jsonify({'viewrequests': patient_list})
