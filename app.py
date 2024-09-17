@@ -5,7 +5,6 @@ import yaml,smtplib
 from email.mime.text import MIMEText
 import os
 from flask import make_response
-from flask_cors import CORS, cross_origin
 import logging
 
 
