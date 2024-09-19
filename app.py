@@ -146,9 +146,6 @@ def login():
 # def internal_server_error(e):
 #     return "Application is down right now"
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
 @app.route('/donor_form/<user_id>', methods=['POST'])
 # @cross_origin()
@@ -215,20 +212,11 @@ def patient_form(user_id):
     return jsonify(payload)
 
 
-# @app.route('/patient_requests', methods=['GET'])
-# def patient_requests():
-#     if not session.get("username"):
-#         return redirect("/login")
-#     cur = mysql.connection.cursor()
-#     cur.execute("SELECT  request_id ,username, blood_group, units, reason, requested_date, phone_number, status,request_id FROM user JOIN patient_request ON user.user_id = patient_request.user_id")
-#     userdetails = cur.fetchall()
-#     cur.close()
-#     return render_template('patient_requests.html', userdetails=userdetails)
+
 
 @app.route('/patient_requests', methods=['GET'])
 def patient_requests():
-    # if not session.get("username"):
-    #     return jsonify({"message": "Unauthorized access"}), 401
+ 
     
     cur = mysql.connection.cursor()
     cur.execute("SELECT request_id, username, blood_group, units, reason, requested_date, phone_number, status FROM user JOIN patient_request ON user.user_id = patient_request.user_id")
@@ -254,8 +242,7 @@ def patient_requests():
 
 @app.route('/reject_patient_request/<request_id>', methods=['POST'])
 def reject_patient_request(request_id):
-    # if not session.get("username"):
-    #     return jsonify({"message": "Unauthorized access"}), 401
+  
     
     cur = mysql.connection.cursor()
     cur.execute("UPDATE patient_request SET status = 'rejected' WHERE request_id = %s", [request_id])
@@ -267,8 +254,7 @@ def reject_patient_request(request_id):
 
 @app.route('/delete/<donation_id>', methods=['POST'])
 def delete(donation_id):
-    # if not session.get("username"):
-    #     return jsonify({"message": "Unauthorized access"}), 401
+   
     cur = mysql.connection.cursor()
     cur.execute("UPDATE donation SET status = 'rejected' WHERE donation_id = %s", [donation_id])
     mysql.connection.commit()
