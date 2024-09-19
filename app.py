@@ -66,8 +66,8 @@ def register():
     password = payload["password"]
     email_address = payload["email"]
     phonenumber = payload["phone_number"]
-    bloodgroup = payload["blood_group"]
-    dob = payload["dob"]
+    bloodgroup = payload["bloodgroup"]
+    dob = payload["DOB"]
     address = payload["address"]
     city = payload["city"]
     state = payload["state"]
@@ -81,12 +81,12 @@ def register():
     cur.execute("INSERT INTO user(username, password,email, phone_number, blood_group, dob, address, city, state, pin_code) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", (username, password,email_address, phonenumber, bloodgroup, dob, address, city, state, pincode))
     mysql.connection.commit()
     cur.close()
-    sender_email = "jayadeepreddy452002@gmail.com"
-    receiver_email =  session.get("email")
+    # sender_email = "jayadeepreddy452002@gmail.com"
+    # receiver_email =  session.get("email")
         
-    subject = "Bloodaid verification"
-    message = "verify here"
-    send_email (sender_email,receiver_email,subject,message)
+    # subject = "Bloodaid verification"
+    # message = "verify here"
+    # send_email (sender_email,receiver_email,subject,message)
     return payload
 
 
@@ -206,18 +206,16 @@ def donation_requests():
     return jsonify({'donationrequests': donation_requests_list})
 
 
-@app.route('/patient_form', methods=['POST'])
-def patient_form():
+@app.route('/patient_form/<user_id>', methods=['POST'])
+def patient_form(user_id):
     payload = request.json
     print (payload)
     units = int(payload.get('units'))
     reason = payload.get('reason')
     requested_date = payload.get('requested_date')
-    username = payload.get("username")
+    
 
     cur = mysql.connection.cursor()
-    cur.execute("SELECT user_id FROM user WHERE username = %s", [username])
-    user_id = cur.fetchone()[0]
     cur.execute("INSERT INTO patient_request (user_id, units, reason, requested_date) VALUES (%s, %s, %s, %s)", (user_id, units, reason, requested_date))
     mysql.connection.commit()
     cur.close()
@@ -318,6 +316,48 @@ def update_donation_request(donation_id):
             response = {"message": "Donation request updated!"}
         else:
             response = {"message": "doantion request not found!"}
+    
+    except Exception as e:
+        mysql.connection.rollback()
+        response = {"message": f"An error occurred: {str(e)}"}
+    
+    finally:
+        cur.close()
+
+    return jsonify(response)
+
+
+@app.route('/update_patient_request/<request_id>', methods=['PUT'])
+def update_patient_request(request_id):
+    payload = request.json
+    status = payload.get('status')
+    # Create a cursor to interact with the database
+    cur = mysql.connection.cursor()
+    
+    try:
+        # Update the donation status to 'Accepted'
+        cur.execute("UPDATE patient_request SET status = %s WHERE request_id = %s", (status, request_id))
+        
+        # Fetch donor details
+        cur.execute("""
+            SELECT patient_request.units, user.blood_group
+            FROM patient_request
+            INNER JOIN user ON user.user_id = patient_request.user_id
+            WHERE patient_request.request_id = %s
+        """, [request_id])
+        donor = cur.fetchone()
+
+        if donor:
+            units = donor[0]
+            blood_group = donor[1]
+            
+            # Update the blood stock
+            cur.execute("UPDATE blood_stock SET units = units - %s WHERE bloodgroup = %s", (units, blood_group))
+            mysql.connection.commit()
+            
+            response = {"message": "patient request updated!"}
+        else:
+            response = {"message": "patient request not found!"}
     
     except Exception as e:
         mysql.connection.rollback()
