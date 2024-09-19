@@ -1,6 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_mysqldb import MySQL 
-from flask_session import Session
 import yaml,smtplib
 from email.mime.text import MIMEText
 import os
@@ -13,7 +12,7 @@ print(password)
 app = Flask(__name__)
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
+
 
 app.secret_key = 'your_secret_key'  # Needed for flashing messages
 
@@ -120,11 +119,7 @@ def login():
     print(existing_user)
 
     if existing_user:
-        session["username"] = username
-        session["role_id"] = existing_user[3]
-        session["user_id"] = existing_user[0]
-        print(session.get('user_id'))
-
+     
         response={
             "username":username, 
             "role_id":existing_user[3],
@@ -140,11 +135,8 @@ def login():
 
 
 
-@app.route("/logout")
-def logout():
-    session["username"] = None
-    session["role_id"] = None
-    return redirect("/")
+
+   
 
 # @app.errorhandler(404)
 # def page_not_found(e):
@@ -369,40 +361,6 @@ def update_patient_request(request_id):
     return jsonify(response)
 
 
-@app.route('/accept_patient/<request_id>', methods=['POST'])
-def accept_patient(request_id):
-    if not session.get("username"):
-        return jsonify({"message": "Unauthorized access"}), 401
-    
-    cur = mysql.connection.cursor()
-    
-    # Update patient request status to 'accepted'
-    cur.execute("UPDATE patient_request SET status = 'accepted' WHERE request_id = %s", [request_id])
-    
-    # Fetch patient details and update blood stock
-    cur.execute("""
-        SELECT patient_request.units, user.blood_group, blood_stock.units 
-        FROM patient_request
-        INNER JOIN user ON user.user_id = patient_request.user_id
-        JOIN blood_stock ON blood_stock.bloodgroup = user.blood_group
-        WHERE patient_request.request_id = %s
-    """, [request_id])
-    patient = cur.fetchone()
-    
-    if patient:
-        units = patient[0]
-        blood_group = patient[1]
-        
-        # Update blood stock
-        cur.execute("UPDATE blood_stock SET units = units - %s WHERE bloodgroup = %s", (units, blood_group))
-        mysql.connection.commit()
-        
-        response = {"message": "Patient request accepted!"}
-    else:
-        response = {"message": "Patient not found or already accepted!"}
-    
-    cur.close()
-    return jsonify(response)
 
 
 # @app.route('/blood_stock', methods=['GET'])
